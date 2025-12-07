@@ -100,14 +100,81 @@ def create_reports(df, report_type):
         
         st.line_chart(daily_summary.set_index('Tarih'), height=250)
         
-        # MAKRO BESİN DAĞILIMI (Protein/Karb/Yağ) - TALEP EDİLEN GRAFİK
+        # MAKRO BESİN DAĞILIMI - PASTA GRAFİK
         st.markdown("---")
-        st.markdown("### Makro Besin Daşılımı (Toplam Gram)")
-        macro_totals = pd.DataFrame({
-            'Besin': ['Protein', 'Karbonhidrat', 'Yağ'],
-            'Gram': [df['protein'].sum(), df['carbs'].sum(), df['fat'].sum()]
-        })
-        st.bar_chart(macro_totals.set_index('Besin'), height=300)
+        st.markdown("### 🥧 Makro Besin Dağılımı (Haftalık)")
+        
+        total_protein = df['protein'].sum()
+        total_carbs = df['carbs'].sum()
+        total_fat = df['fat'].sum()
+        
+        import plotly.graph_objects as go
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=['Protein', 'Karbonhidrat', 'Yağ'],
+            values=[total_protein, total_carbs, total_fat],
+            hole=.3,
+            marker=dict(colors=['#FF6B6B', '#4ECDC4', '#FFE66D'])
+        )])
+        fig.update_layout(height=400, showlegend=True)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # HAFTALIK ANALİZ YORUMU
+        st.markdown("---")
+        st.markdown("### 💬 Haftalık Analiz Yorumu")
+        
+        # Toplam kalori hesapla
+        total_calories_consumed = df['calories'].sum()
+        
+        # Kullanıcı bilgileri (ilk satırdan al)
+        if not df.empty:
+            user_goal_calories = df['goal_calories'].iloc[0]
+            user_goal_type = df['goal_type'].iloc[0]
+            days_count = df['timestamp'].dt.date.nunique()
+            
+            # Haftalık hedef kalori
+            weekly_goal = user_goal_calories * days_count
+            calorie_diff = total_calories_consumed - weekly_goal
+            
+            # Kategori bazlı yorum
+            st.info(f"📊 **Hedef Kategoriniz:** {user_goal_type}")
+            st.metric("Toplam Kalori Alımı", f"{total_calories_consumed:,.0f} kcal")
+            st.metric("Haftalık Hedef", f"{weekly_goal:,.0f} kcal")
+            
+            if calorie_diff > 0:
+                st.warning(f"⚠️ **Kalori Fazlası:** {abs(calorie_diff):,.0f} kcal")
+                
+                if user_goal_type == "Kilo Ver":
+                    st.error("❌ **Dikkat!** Kilo verme hedefiniz var ama kalori fazlası oluşturdunuz. Hedeften sapma var!")
+                elif user_goal_type == "Kilo Al":
+                    st.success("✅ **Harika!** Kilo alma hedefinize uygun şekilde kalori fazlası oluşturdunuz!")
+                else:  # Kilo Koru
+                    st.warning("⚠️ Kilo koruma hedefiniz var. Kalori fazlası oluşturdunuz, dikkatli olun!")
+                    
+            elif calorie_diff < 0:
+                st.success(f"✅ **Kalori Açığı:** {abs(calorie_diff):,.0f} kcal")
+                
+                if user_goal_type == "Kilo Ver":
+                    st.success("✅ **Tebrikler!** Kilo verme hedefinize uygun kalori açığı oluşturdunuz!")
+                elif user_goal_type == "Kilo Al":
+                    st.error("❌ **Dikkat!** Kilo alma hedefiniz var ama kalori açığı oluşturdunuz. Daha fazla yemelisiniz!")
+                else:  # Kilo Koru
+                    st.info("ℹ️ Kilo koruma hedefiniz var. Hafif kalori açığı oluşturdunuz.")
+            else:
+                st.success("🎯 **Mükemmel!** Hedef kalorinize tam ulaştınız!")
+            
+            # Günlük ortalama
+            daily_avg = total_calories_consumed / days_count
+            st.info(f"📅 Günlük Ortalama: {daily_avg:,.0f} kcal ({days_count} gün)")
+        
+        # Makro besin oranları
+        st.markdown("---")
+        st.markdown("### 📊 Makro Besin Oranları")
+        total_macro = total_protein + total_carbs + total_fat
+        if total_macro > 0:
+            st.write(f"🥩 Protein: {(total_protein/total_macro*100):.1f}% ({total_protein:.0f}g)")
+            st.write(f"🍞 Karbonhidrat: {(total_carbs/total_macro*100):.1f}% ({total_carbs:.0f}g)")
+            st.write(f"🧈 Yağ: {(total_fat/total_macro*100):.1f}% ({total_fat:.0f}g)")
 
 
 # --- 3. ANA ARAYÜZ DÜZENİ ---
