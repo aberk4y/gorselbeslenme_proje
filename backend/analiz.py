@@ -20,16 +20,11 @@ def get_food_nutrition(food_name):
     bag.close()
     return result
 
-def calculate_grammage(box_area, area_threshold=50000, reference_gram=100):
-    if box_area <= 0:
-        return 0
-    grammage = (box_area / area_threshold) * reference_gram
-    return max(10, round(grammage))
-
-
 def analyze_food_image(image_path="test_images/salad.jpg"):
-    
-    # --- DÜZELTİLDİ: 'backend' klasörünü yola ekledik. ---
+    """
+    YOLOv8 ile yemek tespiti yapar ve SABİT besin değerlerini döndürür.
+    Gramaj tahmini kaldırıldı - 100g bazında standart değerler kullanılıyor.
+    """
     abs_image_path = os.path.join(os.getcwd(), image_path) 
     
     model = yolotanim.load_model()
@@ -45,34 +40,32 @@ def analyze_food_image(image_path="test_images/salad.jpg"):
     analysis_results = []
 
     for r in results:
-        boxes = r.boxes.xyxy.cpu().numpy()
         classes = r.boxes.cls.cpu().numpy()
         names = r.names
         
-        for box, cls in zip(boxes, classes):
-            x1, y1, x2, y2 = box
-            box_area = (x2 - x1) * (y2 - y1)
-            
+        for cls in classes:
             food_name = names[int(cls)]
-            
-            grammage = calculate_grammage(box_area)
             nutrition = get_food_nutrition(food_name)
 
             if nutrition:
+                # Sabit değerler (100g bazında) - Gramaj tahmini YOK
                 cal_per_100g, prot_per_100g, carb_per_100g, fat_per_100g = nutrition
-                
-                multiplier = grammage / 100
-                total_calories = int(cal_per_100g * multiplier)
                 
                 analysis_results.append({
                     'Yemek': food_name,
-                    'Gramaj': f"{grammage}g",
-                    'Kalori': total_calories,
-                    'Protein': round(prot_per_100g * multiplier, 1),
-                    'Karbonhidrat': round(carb_per_100g * multiplier, 1)
+                    'Kalori': int(cal_per_100g),
+                    'Protein': round(prot_per_100g, 1),
+                    'Karbonhidrat': round(carb_per_100g, 1),
+                    'Yağ': round(fat_per_100g, 1)
                 })
             else:
-                analysis_results.append({'Yemek': food_name, 'Gramaj': 'Bilinmiyor', 'Kalori': 'Veri Eksik'})
+                analysis_results.append({
+                    'Yemek': food_name, 
+                    'Kalori': 'Veri Eksik',
+                    'Protein': 0,
+                    'Karbonhidrat': 0,
+                    'Yağ': 0
+                })
 
     return pd.DataFrame(analysis_results)
 
