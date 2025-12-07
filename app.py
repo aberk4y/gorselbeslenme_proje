@@ -170,9 +170,23 @@ def main_app():
 
             with open(image_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
+            
+            # MANUEL TARİH VE SAAT GİRİŞİ
+            st.markdown("### 📅 Tarih ve Saat Bilgisi")
+            col_date, col_time = st.columns(2)
+            
+            with col_date:
+                log_date = st.date_input("Tarih Seçin:", value=datetime.now().date(), key="log_date")
+            
+            with col_time:
+                log_time = st.time_input("Saat Seçin:", value=datetime.now().time(), key="log_time")
+            
+            # Tarih ve saati birleştir
+            selected_datetime = datetime.combine(log_date, log_time)
+            st.info(f"📌 Seçilen Zaman: {selected_datetime.strftime('%d/%m/%Y %H:%M')}")
 
             # TEK BUTON İLE ANALİZ YAP, KAYDET VE KİŞİSEL RAPORU GÖSTER
-            if st.button("2. Analiz Yap ve KAYDET"):
+            if st.button("2. Analiz Yap ve KAYDET", key="analyze_button"):
                 with st.spinner("Yapay Zeka Analiz Ediyor..."):
                     results_df = analyze_food_image(image_path=image_path)
                     
@@ -180,39 +194,86 @@ def main_app():
                     if 'Kalori' not in results_df.columns:
                         st.error("❌ Tespit Hatası! Yapay Zeka resimde bir şey bulamadı veya resim bozuk.")
                         st.dataframe(results_df, use_container_width=True)
-                        return 
-                    
-                    st.success("✅ Analiz Tamamlandı!")
-                    st.dataframe(results_df, use_container_width=True)
-                    
-                    # LOG KAYDI
-                    if not results_df.empty:
-                        for index, row in results_df.iterrows():
-                            if row['Kalori'] != 'Veri Eksik':
-                                save_log(user_id=user_id, food_name=row['Yemek'])
-                        st.success("Log Kaydı Yapıldı! Haftalık rapor güncellendi.")
-
-                # --- KİŞİSEL RAPORU ANINDA GÖSTERME ---
-                st.markdown("---")
-                user_logs_df = get_data(user_id=user_id, include_simulation=False, days_to_look_back=7) # 7 GÜNLÜK FİLTRE BURADA!
-                create_reports(user_logs_df, "HAFTALIK")
+                    else:
+                        st.success("✅ Analiz Tamamlandı!")
+                        st.dataframe(results_df, use_container_width=True)
+                        
+                        # LOG KAYDI - Manuel tarih ile
+                        if not results_df.empty:
+                            custom_timestamp = selected_datetime.strftime('%Y-%m-%d %H:%M:%S')
+                            for index, row in results_df.iterrows():
+                                if row['Kalori'] != 'Veri Eksik':
+                                    save_log(user_id=user_id, food_name=row['Yemek'], custom_timestamp=custom_timestamp)
+                            st.success(f"✅ Log Kaydı Yapıldı! (Kullanıcı ID: {user_id}, Tarih: {selected_datetime.strftime('%d/%m/%Y %H:%M')})")
 
 
     # SÜTUN 2: GENEL RAPORLAR
     with col2:
         st.markdown("## 📈 Analiz ve Raporlar")
         
+        # TARİH ARALIĞI SEÇİCİ İLE HAFTALIK RAPOR
+        st.markdown("### 📊 Haftalık Takip Raporu")
+        
+        col_start, col_end = st.columns(2)
+        with col_start:
+            start_date = st.date_input(
+                "Başlangıç Tarihi:", 
+                value=datetime.now().date() - timedelta(days=7),
+                key="start_date"
+            )
+        
+        with col_end:
+            end_date = st.date_input(
+                "Bitiş Tarihi:", 
+                value=datetime.now().date(),
+                key="end_date"
+            )
+        
+        # Tarih aralığı kontrolü
+        if start_date > end_date:
+            st.error("⚠️ Başlangıç tarihi, bitiş tarihinden büyük olamaz!")
+        else:
+            days_diff = (end_date - start_date).days
+            st.info(f"📅 Seçilen Aralık: {days_diff + 1} gün ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})")
+        
         # KİŞİYE ÖZEL HAFTALIK RAPOR (Manuel Yenileme)
-        if st.button("3. Seçili Kullanıcının Takip Raporu"):
-            with st.spinner(f"Kullanıcı ID: {user_id}'e Ait Kayıtlar Analiz Ediliyor..."):
-                user_logs_df = get_data(user_id=user_id, include_simulation=False, days_to_look_back=7) # 7 GÜNLÜK FİLTRE BURADA!
-                create_reports(user_logs_df, "HAFTALIK")
+        if st.button("3. Seçili Kullanıcının Takip Raporu", key="weekly_report_button"):
+            if start_date <= end_date:
+                with st.spinner(f"Kullanıcı ID: {user_id}'e Ait Kayıtlar Analiz Ediliyor..."):
+                    # Özel tarih aralığı ile veri çekme
+                    bag = connect_db()
+                    start_datetime = datetime.combine(start_date, datetime.min.time())
+                    end_datetime = datetime.combine(end_date, datetime.max.time())
+                    
+                    query = """
+                        SELECT logs.*, foods.calories, foods.protein, foods.carbs, foods.fat, foods.category,
+                               users.name, users.gender, users.age, users.goal_calories, users.activity_level, users.goal_type
+                        FROM logs
+                        LEFT JOIN foods ON logs.food_name = foods.name
+                        LEFT JOIN users ON logs.user_id = users.id
+                        WHERE logs.user_id = ? AND logs.timestamp BETWEEN ? AND ?
+                    """
+                    
+                    user_logs_df = pd.read_sql_query(
+                        query, 
+                        bag, 
+                        params=(user_id, start_datetime.strftime('%Y-%m-%d %H:%M:%S'), end_datetime.strftime('%Y-%m-%d %H:%M:%S'))
+                    )
+                    bag.close()
+                    
+                    if not user_logs_df.empty:
+                        user_logs_df['timestamp'] = pd.to_datetime(user_logs_df['timestamp'])
+                        user_logs_df['time_hour'] = user_logs_df['timestamp'].dt.hour
+                        user_logs_df.rename(columns={'category': 'category_food'}, inplace=True)
+                        create_reports(user_logs_df, "HAFTALIK")
+                    else:
+                        st.warning(f"⚠️ Seçili tarih aralığında (Kullanıcı ID: {user_id}) hiç kayıt bulunamadı!")
 
         st.markdown("---")
         # GENEL KORELASYON ANALİZİ
-        if st.button("Genel Korelasyon Analizi (Hoca Raporu)"):
+        if st.button("Genel Korelasyon Analizi (Hoca Raporu)", key="correlation_button"):
             with st.spinner("5000+ Simülasyon Kaydı Analiz Ediliyor..."):
-                sim_df = get_data(include_simulation=True, days_to_look_back=30) # KORELASYON İÇİN 30 GÜNLÜK VERİ ÇEKİLİR
+                sim_df = get_data(include_simulation=True, days_to_look_back=30)
                 create_reports(sim_df, "KORELASYON")
 
 
