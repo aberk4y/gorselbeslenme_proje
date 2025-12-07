@@ -163,11 +163,17 @@ def create_database():
     print(f"Veritabani hazir toplam {len(food_list)} besin.")
 
 def save_user_profile(user_id, name, gender, age, weight, height, activity, goal, calories):
-    
+    """Kullanıcı profilini kaydet/güncelle - Tip dönüşümleri ile"""
     bag = sqlite3.connect('backend/nutrition_data.db')
     b = bag.cursor()
 
-    # Kullanıcıyı güncelleme sorgusu (9 argüman alır)
+    # Tip dönüşümleri (datatype mismatch önleme)
+    user_id = int(user_id)
+    age = int(age)
+    weight = float(weight)
+    height = int(height)
+    calories = int(calories)
+    
     b.execute('''
         INSERT OR REPLACE INTO users (id, name, gender, age, weight, height, activity_level, goal_type, goal_calories)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
