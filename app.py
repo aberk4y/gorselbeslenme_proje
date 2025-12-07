@@ -283,12 +283,44 @@ def create_reports(df, report_type):
 def user_input_form():
     """Kullanıcıdan yaş, kilo, cinsiyet gibi verileri alır ve hedefi hesaplar."""
     with st.sidebar:
-        st.header("👤 Kullanıcı Profili ve Seçim")
+        st.header("👤 Kullanıcı Yönetimi")
         
+        # YENİ KULLANICI EKLEME BÖLÜMÜ
+        with st.expander("➕ Yeni Kullanıcı Ekle"):
+            st.markdown("### Yeni Kullanıcı Bilgileri")
+            new_name = st.text_input("Ad Soyad", key="new_user_name")
+            new_gender = st.selectbox("Cinsiyet", ["Erkek", "Kadın"], key="new_user_gender")
+            new_age = st.slider("Yaş", 18, 80, 25, key="new_user_age")
+            new_weight = st.slider("Kilo (kg)", 40.0, 150.0, 70.0, step=0.5, key="new_user_weight")
+            new_height = st.slider("Boy (cm)", 140, 220, 170, key="new_user_height")
+            
+            activity_levels = ["Hareketsiz", "Az Hareketli", "Orta Hareketli", "Çok Hareketli", "Sporcu"]
+            new_activity = st.selectbox("Aktivite Düzeyi", activity_levels, index=2, key="new_user_activity")
+            new_goal = st.selectbox("Hedef", ["Kilo Koru", "Kilo Ver", "Kilo Al"], key="new_user_goal")
+            
+            new_calculated_goal = hesapla_gunluk_kalori(new_weight, new_height, new_age, new_gender, new_activity, new_goal)
+            st.info(f"Hedef Kalori: **{new_calculated_goal} kcal**")
+            
+            if st.button("✅ Kullanıcıyı Ekle", key="add_new_user"):
+                if new_name.strip():
+                    # Yeni kullanıcı ID'si (en büyük ID + 1)
+                    all_users = get_all_users_profiles()
+                    new_id = all_users['id'].max() + 1 if not all_users.empty else 1
+                    
+                    save_user_profile(new_id, new_name, new_gender, new_age, new_weight, new_height, 
+                                    new_activity, new_goal, new_calculated_goal)
+                    st.success(f"🎉 {new_name} başarıyla eklendi! (ID: {new_id})")
+                    st.rerun()
+                else:
+                    st.error("❌ Lütfen ad soyad girin!")
+        
+        st.markdown("---")
+        
+        # MEVCUT KULLANICI SEÇİMİ VE GÜNCELLEME
         all_users_df = get_all_users_profiles()
         user_map = dict(zip(all_users_df['id'], all_users_df['name']))
         
-        selected_name = st.selectbox("1. Görüntülenecek Kullanıcıyı Seçin:", list(user_map.values()), index=0)
+        selected_name = st.selectbox("1. Kullanıcı Seçin:", list(user_map.values()), index=0)
         selected_user_id = list(user_map.keys())[list(user_map.values()).index(selected_name)]
         
         current_profile = all_users_df[all_users_df['id'] == selected_user_id].iloc[0]
@@ -309,9 +341,9 @@ def user_input_form():
         calculated_goal = hesapla_gunluk_kalori(weight, height, age, gender, activity, goal)
         st.info(f"Hesaplanan Hedef Kalori: **{calculated_goal} kcal**")
         
-        if st.button("Profili Güncelle/Kaydet", key="update_profile"):
+        if st.button("💾 Profili Güncelle", key="update_profile"):
             save_user_profile(selected_user_id, name, gender, age, weight, height, activity, goal, calculated_goal)
-            st.success(f"✅ Kullanıcı {selected_name} (ID: {selected_user_id}) profili güncellendi!")
+            st.success(f"✅ {selected_name} profili güncellendi!")
             
     return selected_user_id 
 
