@@ -185,15 +185,26 @@ def get_demo_user_id():
     bag.close()
     return user_id[0] if user_id else 1 # ID yoksa 1 döndür
 
-def save_log(user_id, food_name):
-    """Analiz edilen yemeği ZAMAN DAMGASI ile Log tablosuna kaydeder."""
+def save_log(user_id, food_name, custom_timestamp=None):
+    """Analiz edilen yemeği ZAMAN DAMGASI ile Log tablosuna kaydeder.
+    
+    Args:
+        user_id: Kullanıcı ID'si
+        food_name: Yemek adı
+        custom_timestamp: Özel tarih/saat (opsiyonel). Format: 'YYYY-MM-DD HH:MM:SS'
+    """
     bag = connect_db() 
     b = bag.cursor()
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S') # Zaman damgası
+    
+    # Eğer özel tarih verilmişse onu kullan, yoksa şu anki zamanı al
+    if custom_timestamp:
+        log_time = custom_timestamp
+    else:
+        log_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # Logs tablosuna kaydetmek
     b.execute("INSERT INTO logs (user_id, food_name, timestamp) VALUES (?, ?, ?)", 
-              (user_id, food_name, current_time))
+              (user_id, food_name, log_time))
     
     bag.commit()
     bag.close()
