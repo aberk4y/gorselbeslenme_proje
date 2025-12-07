@@ -62,32 +62,133 @@ def create_reports(df, report_type):
 
     # KORELASYON ANALİZİ (Genel Simülasyon Verisi)
     if report_type == "KORELASYON":
-        st.header("🔬 Genel Korelasyon Analizi (5000+ Kayıt)")
+        st.header("🔬 Gelişmiş Korelasyon Analizi")
+        st.info(f"📊 Toplam {len(df)} kayıt analiz ediliyor")
         
-        # 1. Sabah Karbonhidrat Tüketimi
-        carb_classes = ['Karbonhidrat Kaynağı', 'Unlu Mamul'] 
-        morning_carbs = df[
-            (df['time_hour'] >= 6) & (df['time_hour'] <= 12) & (df['category_food'].isin(carb_classes))
-        ]
-        gender_carb_analysis = morning_carbs.groupby('gender').size().reset_index(name='Sabah Tüketimi')
-        st.dataframe(gender_carb_analysis, use_container_width=True)
-        
-        if 'Kadın' in gender_carb_analysis['gender'].values and 'Erkek' in gender_carb_analysis['gender'].values:
-            kadin_tuketim = gender_carb_analysis[gender_carb_analysis['gender'] == 'Kadın']['Sabah Tüketimi'].iloc[0]
-            erkek_tuketim = gender_carb_analysis[gender_carb_analysis['gender'] == 'Erkek']['Sabah Tüketimi'].iloc[0]
-            
-            if kadin_tuketim > erkek_tuketim:
-                st.success(f"Analiz Sonucu: Simülasyon verisinde **Kadınların sabah karbonhidrat tüketimi** erkeklere göre daha fazladır.")
-            else:
-                st.info(f"Analiz Sonucu: Simülasyon verisinde **Erkekler daha fazla karbonhidrat tüketmiştir**.")
-        
-        # 2. Yaşa Göre Fast-Food Oranı
+        # 1. CİNSİYETE GÖRE HEDEF BAŞARI ANALİZİ
         st.markdown("---")
-        st.markdown("### Yaşa Göre Fast-Food Oranı")
+        st.markdown("### 🎯 Cinsiyet Bazlı Hedef Başarı Oranı")
+        
+        # Her kullanıcının 7 günlük verisi için hesaplama
+        user_goal_success = []
+        for user_id in df['user_id'].unique():
+            user_data = df[df['user_id'] == user_id]
+            if not user_data.empty:
+                total_consumed = user_data['calories'].sum()
+                goal_calories = user_data['goal_calories'].iloc[0]
+                days = user_data['timestamp'].dt.date.nunique()
+                expected_total = goal_calories * days
+                
+                # Hedef tipi
+                goal_type = user_data['goal_type'].iloc[0]
+                gender = user_data['gender'].iloc[0]
+                
+                # Başarı kriterleri
+                if goal_type == "Kilo Ver":
+                    # Kalori açığı olmalı (hedeften az yemeli)
+                    success = total_consumed < expected_total
+                elif goal_type == "Kilo Al":
+                    # Kalori fazlası olmalı (hedeften fazla yemeli)
+                    success = total_consumed > expected_total
+                else:  # Kilo Koru
+                    # ±%10 tolerans ile hedefe yakın olmalı
+                    success = abs(total_consumed - expected_total) / expected_total < 0.1
+                
+                user_goal_success.append({
+                    'user_id': user_id,
+                    'gender': gender,
+                    'goal_type': goal_type,
+                    'success': success
+                })
+        
+        success_df = pd.DataFrame(user_goal_success)
+        
+        if not success_df.empty:
+            gender_success = success_df.groupby('gender')['success'].agg(['sum', 'count'])
+            gender_success['success_rate'] = (gender_success['sum'] / gender_success['count'] * 100).round(1)
+            
+            st.dataframe(gender_success[['success_rate']].rename(columns={'success_rate': 'Başarı Oranı (%)'}), use_container_width=True)
+            
+            if 'Kadın' in gender_success.index and 'Erkek' in gender_success.index:
+                kadin_success = gender_success.loc['Kadın', 'success_rate']
+                erkek_success = gender_success.loc['Erkek', 'success_rate']
+                
+                if kadin_success > erkek_success:
+                    st.success(f"✅ **Kadınlar daha başarılı!** Kadınların %{kadin_success:.1f}'i hedefe ulaşırken, erkeklerin %{erkek_success:.1f}'i hedefe ulaştı.")
+                else:
+                    st.success(f"✅ **Erkekler daha başarılı!** Erkeklerin %{erkek_success:.1f}'i hedefe ulaşırken, kadınların %{kadin_success:.1f}'i hedefe ulaştı.")
+        
+        # 2. SABAH SAATLERİNDE CİNSİYETE GÖRE PROTEİN TÜKETİMİ
+        st.markdown("---")
+        st.markdown("### 🥩 Sabah Saatlerinde Cinsiyet Bazlı Protein Tüketimi")
+        
+        morning_data = df[(df['time_hour'] >= 6) & (df['time_hour'] <= 12)]
+        
+        if not morning_data.empty:
+            gender_protein = morning_data.groupby('gender')['protein'].sum().reset_index()
+            gender_protein.columns = ['Cinsiyet', 'Toplam Protein (g)']
+            
+            st.dataframe(gender_protein, use_container_width=True)
+            st.bar_chart(gender_protein.set_index('Cinsiyet'), height=300)
+            
+            if len(gender_protein) == 2:
+                kadin_protein = gender_protein[gender_protein['Cinsiyet'] == 'Kadın']['Toplam Protein (g)'].iloc[0]
+                erkek_protein = gender_protein[gender_protein['Cinsiyet'] == 'Erkek']['Toplam Protein (g)'].iloc[0]
+                
+                if kadin_protein > erkek_protein:
+                    fark = kadin_protein - erkek_protein
+                    st.info(f"📊 Kadınlar sabah saatlerinde erkeklere göre **{fark:.0f}g daha fazla protein** tüketti.")
+                else:
+                    fark = erkek_protein - kadin_protein
+                    st.info(f"📊 Erkekler sabah saatlerinde kadınlara göre **{fark:.0f}g daha fazla protein** tüketti.")
+        
+        # 3. HEDEF TİPİNE GÖRE ORTALAMA KALORI FARKI
+        st.markdown("---")
+        st.markdown("### 🎯 Hedef Tipi Bazlı Performans")
+        
+        goal_performance = []
+        for goal_type in df['goal_type'].unique():
+            goal_data = df[df['goal_type'] == goal_type]
+            users = goal_data['user_id'].unique()
+            
+            for user_id in users:
+                user_data = goal_data[goal_data['user_id'] == user_id]
+                total_consumed = user_data['calories'].sum()
+                goal_calories = user_data['goal_calories'].iloc[0]
+                days = user_data['timestamp'].dt.date.nunique()
+                expected_total = goal_calories * days
+                
+                diff = total_consumed - expected_total
+                goal_performance.append({
+                    'goal_type': goal_type,
+                    'calorie_diff': diff
+                })
+        
+        perf_df = pd.DataFrame(goal_performance)
+        if not perf_df.empty:
+            avg_diff = perf_df.groupby('goal_type')['calorie_diff'].mean().round(0)
+            st.dataframe(avg_diff.rename('Ortalama Kalori Farkı (kcal)'), use_container_width=True)
+            
+            st.write("**Yorum:**")
+            for goal, diff in avg_diff.items():
+                if diff > 0:
+                    st.warning(f"- {goal}: Ortalama {abs(diff):.0f} kcal **fazla** tüketim")
+                elif diff < 0:
+                    st.success(f"- {goal}: Ortalama {abs(diff):.0f} kcal **açık**")
+                else:
+                    st.info(f"- {goal}: Hedefle **tam uyumlu**")
+        
+        # 4. YAŞA GÖRE FAST-FOOD TÜKETİMİ
+        st.markdown("---")
+        st.markdown("### 🍔 Yaş Gruplarına Göre Fast-Food Tüketimi")
+        
         df['Age Group'] = pd.cut(df['age'], bins=[18, 30, 50, 80], labels=['Genç (18-30)', 'Orta Yaş (31-50)', 'Yaşlı (50+)'])
-        fast_food_consumption = df.groupby('Age Group')['category_food'].value_counts(normalize=True).mul(100).rename('Yuzde').reset_index()
-        fast_food_only = fast_food_consumption[fast_food_consumption['category_food'] == 'Fast-Food']
-        st.bar_chart(fast_food_only, x='Age Group', y='Yuzde')
+        fast_food_data = df[df['category_food'] == 'Fast-Food']
+        
+        if not fast_food_data.empty:
+            age_ff = fast_food_data.groupby('Age Group').size().reset_index(name='Tüketim Sayısı')
+            st.dataframe(age_ff, use_container_width=True)
+            st.bar_chart(age_ff.set_index('Age Group'), height=300)
 
 
     # HAFTALIK TAKİP RAPORU (Kişiye Özel Canlı Veri)
